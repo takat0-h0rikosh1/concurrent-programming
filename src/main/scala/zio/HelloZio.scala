@@ -8,7 +8,7 @@ import scalaz.zio.console._
 object HelloZio extends App{
 
   def run(args: List[String]): ZIO[Console, Nothing, Int] =
-    myAppLogic.fold(_ =>1, _ => 0)
+    myAppLogic.fold((_: IOException) =>1, (_: Unit) => 0)
 
   val myAppLogic: ZIO[Console, IOException, Unit] =
     for {
