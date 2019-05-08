@@ -1,65 +1,9 @@
-# ZIOメモ
-
-純粋な関数型プログラミングに基づいた、非同期および並行プログラミングのためのライブラリ。
-
-ZIOの中核は、HaskellのIOモナドに触発されたZIO型。  
-ZIO型を使用することで単純でタイプセーフかつ、テストしやすく、組み立てやすくなる。  
-結果的に非同期、並行処理の複雑な問題の解決につながる。
-
-## ZIO
-
-ZIO[R, E, A]型
-
-`R => Either[E, A]` の進化版的なもの。
-
-- R - Environment type
-   - 処理するために必要な要件(値だったり型だったり)を示す
-- E - Failure Type
-   - 失敗の処理結果を示す。
-- A - Success Type
-   - 成功の処理結果を示す。
-
-
-## Type Aliases
-
-ZIO型はZIOの唯一の型。  
-一般的なケースを単純化するタイプエイリアスとコンパニオンオブジェクトの仲間がいる。
-
-### UIO[A]
-
-`ZIO[Any, Nothing, A]` のエイリアス。  
-要するに失敗することがなく要件も必要無いので常に成功の結果を返すことを示す。
-
-### Task[A]
-
-`ZIO[Any, Throwable, A]` のエイリアス。  
-要件もなく失敗、もしくは成功の結果を返すことを示す。
-
-### TaskR[R, A]
-
-`ZIO[R, Throwable, A]` のエイリアス。  
-要件Rを必要とし、Throwable で失敗するか、Aで成功するかを示す。
-
-### IO[E, A]
-
-`ZIO[Any, E, A]` のエイリアス。  
-要件を受け取らず、失敗か成功の結果を返すことを表す。
-
----
-
-型エイリアスのコンパニオンオブジェクトには型の値を構築するためのメソッドがある。  
-最初は、 Future に似てる Task からやるのがおすすめ。  
-Cats Effect を使っている場合、アプリケーション上で環境をスレッド化できるので TaskR がおすすめ。  
-UIO はエラーを処理した結果も含めて、確実な効果を説明できる。  
-関数型になれてる人はいきなり ZIO ガンガン使っちゃっても良い。  
-※独自の型を作成すると便利な場合がある。
-
-## Create Effects
+# Create Effects
 
 ZIO型を作る方法を探る。
 一般的なScala型から作る方法、また同期・非同期それぞれの作用を持ったZIO型を作る方法について探る。
 
-### From Success Values
+## From Success Values
 
 `ZIO.succeed` を使って成功の結果をモデル化できる。
 
@@ -91,7 +35,7 @@ val s3 = ZIO.succeedLazy(bigString)
 
 `ZIO.succeedLazy` で構築した遅延評価された結果は、その結果が使用される時のみ値を構築する。
 
-### From Failure Values
+## From Failure Values
 
 `ZIO.fail` を使用すると失敗のモデルを作成できる。
 
@@ -114,9 +58,9 @@ import scalaz.zio.Task
 val f2 = Task.fail(new Exception("Uh oh!"))
 ```
 
-### From Scala Values
+## From Scala Values
 
-#### Option
+## Option
 
 `ZIO.fromOption` を使う。
 
@@ -128,7 +72,7 @@ val zoption: ZIO[Any, Unit, Int] = ZIO.fromOption(Some(2))
 
 エラーは、 `Unit` になる。 ZIO#mapError を使用して、より具体的なエラータイプに変更できる。
 
-#### Either
+## Either
 
 `ZIO.fromEither` を使う。
 
@@ -140,7 +84,7 @@ val zeither = ZIO.fromEither(Right("Success!"))
 
 エラーの場合は `Left`、成功の場合は `Right` になる。
 
-#### Try
+## Try
 
 `ZIO.fromTry` を使う。
 
@@ -153,7 +97,7 @@ val ztry = ZIO.fromTry(Try(42 / 0))
 
 エラーの場合は、 `Throwable` になる。
 
-#### Function
+## Function
 
 `A => B` という関数を `ZIO.fromFunction` を使って ZIO型に変換できる。  
 これすごい。
@@ -167,7 +111,7 @@ val zfun: ZIO[Int, Nothing, Int] =
 
 処理を実行するために値の入力値の指定が必要。ここでは入力値の型が Int型。
 
-#### Future
+## Future
 
 `ZIO.fromFuture` を使う。
 
@@ -187,11 +131,11 @@ val zfuture: Task[String] =
 fromFuture の関数には ExecutionContext を渡す。  
 エラー型は常に Throwable になる。
 
-### From Side-Effects
+## From Side-Effects
 
 ZIOは同期・非同期の処理をZIO型に変換することが可能。
 
-#### Synchronous Side-Effects
+## Synchronous Side-Effects
 
 同期処理は、`ZIO.effect` を使用して変換する。  
 エラータイプは、常に Throwable になる。
@@ -226,7 +170,7 @@ val getStrLn2: IO[IOException, String] =
   }
 ```
 
-#### Asynchronous Side-Effects
+## Asynchronous Side-Effects
 
 コールバックベースのAPIを使用した非同期の副作用は、`ZIO.effectAsync` を使用してZIO型へ変換できる。
 
@@ -251,7 +195,7 @@ val login: IO[AuthError, User] =
 
 割り込み、リソースの安全性、エラーハンドリングの点で、ZIO型の恩恵が受けられる。
 
-#### Blocking Synchronous Side-Effects
+## Blocking Synchronous Side-Effects
 
 scalaz.zio.blocking パッケージにプロッキングIOを安全にZIO型に変換するモジュールが含まれる。  
 effectBlocking メソッドを使ってZIO型に変換することができる。
@@ -279,4 +223,3 @@ def download(url: String) =
 def safeDownload(url: String) = 
   blocking(download(url))
 ```
-
