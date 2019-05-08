@@ -76,4 +76,38 @@ val z: IO[IOException, Array[Byte]] =
 
 ## Folding
 
-// TODO Folding について
+Scala の Option と Either のデータ型が fold を使えるように、  
+ZIO でも fold が使える。
+
+`fold` は関数を適用して使う、下記のように失敗の結果を無効化する。
+
+```scala
+import scalaz.zio.{IO, UIO}
+import java.io.IOException
+
+lazy val DefaultData: Array[Byte] = ???
+def openFile(path: String): IO[IOException, Array[Byte]] = ???
+
+val z: UIO[Array[Byte]] =
+  openFile("primary.data").fold(
+      _ => DefaultData,
+      data => data)
+```
+
+`foldM` も同様に関数を適用するが、失敗と成功のどちらも処理することができる。
+
+```scala
+import scalaz.zio.{IO, ZIO}
+import java.io.IOException
+
+lazy val DefaultData: Array[Byte] = ???
+def openFile(path: String): IO[IOException, Array[Byte]] = ???
+
+val z: IO[IOException, Array[Byte]] = 
+  openFile("primary.data").foldM(
+    _    => openFile("secondary.data"),
+    data => ZIO.succeed(data))
+```
+
+## Retrying
+
