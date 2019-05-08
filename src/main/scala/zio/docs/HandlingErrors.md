@@ -111,3 +111,36 @@ val z: IO[IOException, Array[Byte]] =
 
 ## Retrying
 
+### ZIO#retry
+
+`ZSchedule` を取得して指定されたポリシーに従い再試行する。  
+※ ドキュメントには `Schedule` って記載されていたぞ。
+
+```scala
+import scalaz.zio.{IO, ZIO,ZSchedule}
+import scalaz.zio.clock._
+import java.io.IOException
+
+def openFile(path: String): IO[IOException, Array[Byte]] = ???
+val z: ZIO[Clock, IOException, Array[Byte]] = 
+  openFile("primary.data").retry(ZSchedule.recurs(5))
+```
+
+### ZIO#retryOrElse
+
+指定されたポリシーで処理が成功しなかった場合のフォールバックを指定できる。
+
+```scala
+import scalaz.zio.{IO, ZIO,ZSchedule}
+import scalaz.zio.clock._
+import java.io.IOException
+
+lazy val DefaultData: Array[Byte] = ???
+def openFile(path: String): IO[IOException, Array[Byte]] = ???
+val z: ZIO[Clock, IOException, Array[Byte]] = 
+  openFile("primary.data").retryOrElse(
+    ZSchedule.recurs(5), 
+    (_, _) => ZIO.succeed(DefaultData))
+```
+
+他にも、 `ZIO#retryOrElse` ってのもあるよ👍
