@@ -204,13 +204,219 @@ ThreadPoolExecutor クラスを使って独自の Executor を構築すること
 
 ### Executor のライフサイクル
 
+Executor をシャットダウンしないとJVMを終了できない。
+
+Executor は複数のタスクを非同期で処理するので、おだやかなシャットダウンから唐突なシャットダウンまで、
+様々な形式のシャットダウンができななければならない。
+
+実行サービスのライフサイクルという問題に対応するために、
+Executor を extends したサブインターフェイス ExecutorService にライフサイクルを
+管理するメソッドが用意された。
+
+```
+public interface ExecutionService extends Executor {
+  void shutdown();
+  List<Runnable> shutdownNow();
+  boolean isShutdown();
+  boolean isTerminated();
+  boolean awaitTermination(long timeout, TimeUnit unit)
+    throws InterruptedException
+}
+```
+
+ExecutorService が暗黙に定義しているライフサイクルは３つステートがある。
+
+- 実行中
+- シャットダウン中
+- 終了
+
+#### 各メソッドの説明
+
+- shutdown()
+  - おだやかなシャットダウンを行う
+　- 既に依頼済のタスクも完了する
+　- 新たなタスクは受付けない
+- shutdownNow()
+  - 唐突なシャットダウンを行う
+  - 実行中のタスクはキャンセルする
+  - キューにあってまだ始まってないタスクはスタートしない
+- awaitTermination(...)
+  - ExecutionServiceが終了ステートへ到達するのを待つ
+- isTerminated()
+  - 終了しているかしてないかを調べる 
+
+### タスクの遅延開始と周期的実行
+
+java.util.Timer クラスはタスクの遅延実行(このタスクを100ミリ秒後に実行せよ)
+と周期的実行(このタスクを10ミリ秒間隔で実行せよ)を管理する。
+
+しかし、Timerには欠点がいくつかあるので、ScheduledThreadPoolExecutorを使うべき。
+
+#### TimerとScheduledThreadPoolExecutorのスケジューリング比較
+
+- Timer	
+   - スケジューリングは、相対時間ではなく絶対時間に基づいて行われている。
+   - なのでタスクがシステムクロックの変化に影響を受けることがある。
+- ScheduledThreadPoolExecutor
+   - 相対時間だけをサポートする。
+
+※Javaのversion upで解決しているかもしれない。
+
+#### TimerのTimerTask実行の挙動
+
+作成されるスレッドはひとつだけ。
+したがってタスクの実行が長くかかると、他のタスクの実行開始に影響する。
+10ミリ間隔のタスクと、40ミリ秒かかるタスクを同時に実行することはできない。
+
+#### ScheduledThreadPoolExecutorのタスク実行の挙動
+
+遅延開始タスクや周期的なタスクのために複数のスレッドを使って回避する。
+
+#### Timerの他の問題
+
+TimerTaskがチェックされない例外(RuntimeException)を投げたときの対応がお粗末。Timerはその例外をcatchしないのでこの例外はスレッドを終了してしまう。
+TimerはThreadを復活させることもしないので未実行のTimerTaskは実行されないし、
+新しいタスクはスケジューリングされない。
+
+https://docs.oracle.com/javase/jp/8/docs/api/java/util/Timer.html
+
+Java 5.0以降はTimerを使う理由はほとんどない。
 
 
+```java
+public class OutOfTime {
+  public static void main (String[] args) throws Exception {
+    Timer timer = new Timer();
+    timer.schedule(new ThrowTask(), 1);
+    SECONDS.sleep(1);
+    timer.schedule(new ThrowTask(), 1);
+    SECONDS.sleep(5);
+  }
 
+  static class ThrowTask extends TimerTask {
+    public void run() { throw new RuntimeException(); }
+  }
+}
+```
 
-##### .newSingleThreadPool
+#### スケジューリングサービスを自作する
 
-##### .newScheduledThreadPool
+BlockingQueueの実行クラス、DelayQueueを利用する。
+このキューにはScheduledThreadPoolExecutorのようなスケジューリング機能がある。
 
+### 並列化できる箇所/すべき箇所を見つける
 
+Executorを使うためにはタスクをRunnableとして書き表す必要がある。
+サーバアプリケーションが受けるひとつひとつのクライアントリクエストには自明なタスク境界がある。
+ひとつのクライアントリクエストの中にもさらに並列化できそうな箇所がある。
+データベースサーバーなどはその典型。
 
+#### 逐次的なページレンダラ
+
+割愛。
+
+#### 結果を返すタスク: CallableとFuture
+
+Executor はタスクをRunnableとして表現する。
+
+##### Runnableには制約がある。
+
+- runメソッドは値を返さず、チェックされる例外も返さない。
+- 副作用のある処理は可能。
+
+##### Callableを使う
+
+タスクの典型は下記
+
+- データベースのクエリ結果
+- ネットワークからリソースを取ってくる
+- 複雑な関数の計算
+
+このようなタスクの表現としてはCallableが適している。
+callメソッドは値を返し、例外も投げることができる。
+
+ExecutorsにはRunnableのタスクをCallableでラップするメソッドがある。
+
+##### タスクのライフサイクル
+
+作成(created)、依頼(submitted)、開始(started)、完了(completed)で表現される。
+
+#### Futureを使う
+
+Futureはひとつのタスクのライフサイクルのあらゆる段階を表現するオブジェクト。
+タスクの完了やキャンセルを調べるメソッド、結果を取り出すメソッド、キャンセルするメソッドなどが揃っている。
+
+##### Future.getの振る舞い
+
+- タスクがすでに完了していたらリターンするか例外を投げる
+- 完了していなければ完了するまでブロックする
+- タスクが例外を投げて完了したら、ExecutionExceptionでラップして再投する
+- タスクがキャンセルされてたら、CancellationExceptionを投げる
+
+##### Futureを使ってタスクを表現するには...
+
+まずExecutorService#submitにRunnableやCallableを依頼してFutureをもらう。
+それを使って結果を取り出したりタスクをキャンセルしたりする。
+
+FutureTaskを明示的に作り、Executorに依頼して実行したり、runメソッドを読んで直接実行したりする。
+
+RunnableやCallableをExecutorに依頼すると、そのRunnableやCallableが依頼したスレッドからタスクを実行するスレッドへ安全に公開される。同様にFutureの結果の値をセットすると、結果を計算したスレッドからそれをgetで取り出すスレッドへ、結果が安全に公開される。
+
+##### Futureを使うページレンダラ
+
+- テキストのレンダーと画像のダウンロードとでタスクを分ける。
+- 全画像のダウンロードをCallableのタスクとし、Executor#submitに渡してFutureを受け取る。そのすきにテキストをレンダーする。
+- Future.getしたときのInterrunptExceptionとExecutionExceptionに備える。
+- 本来は画像1件ずつのダウンロードを並列実行できるのが良い。
+
+// TODO コード写経
+
+#### 異質なタスクを並列化する限界
+
+複数のワーカーにそれぞれ異質なタスクを割り当てると、タスクのサイズが大小バラバラになる可能性がある。仕事を２つに分割したタスクAとBを二人のワーカーに割当、AがBの10倍時間がかかるなら、両者の並列化によるスピードアップの効果はわずかに9%。タスクを複数のワーカーに分割して割り当てると必ず調整作業のオーバーヘッドが生じる。分割が有意義であるためには、並列化による生産性の向上がこのオーバーヘッドを大きく上回っている必要がある。
+
+上の「Futureを使うページレンダラ」はテキストのレンダリングのほうが画像のダウンロードよりも圧倒的にはやい。なので、性能は逐次処理とそんなに変わらないのにコードが複雑になった。２つのスレッドを使ったときの最大の期待値はスピードが２倍になること。しがって互いに異質な活動を並列化しようとすると辛い場合がある。
+
+#### CompeletionService: ExecutorがBlockingQueueと合体
+
+CompleteServiceインタフェイスはExecutorとBlockingQueueの機能を合わせて持っている。これにCallableのタスクを依頼すると、takeやpollなどのキューのようなメソッドを使って完了した結果を取り出せる。これらのメソッドはFutureを返すので結果がすでにできていればFuture.getで取得できる。ExecutorCompletionServiceはCompletionServiceの実装クラスで、タスクの実行をExecutorに委譲する。
+
+ExecutorCompletionServiceの実装はとても簡単。コンストラクタにQueueingFutureでラップされる。これはFutureTaskのサブクラスで、オーバーライドしたdoneメソッドが結果をBlockingQueueに入れる。takeメソッドとpollメソッドはBlockingQueueに委譲される。結果がまだなければブロックする。
+
+```java
+private class QueueingFuture<V> extends Future<V> {
+  QueueingFuture(Callable<V> c) { super(c); }
+  QueueingFuture(Runnable t, V r) { super(t, r); }
+
+  protected void done() {
+    completionQueue.add(this);
+  }
+}
+```
+
+#### ex.) 例: CompletionServiceを使ったページレンダラ
+
+CompletionServiceを使うとページレンダラの実行性能を２つの点で向上できる。
+実行時間の短縮と応答性を改善できる。画像を一括でダウンロードしていたのを、
+一つひとつダウンロードするために別々のタスクを作り、それらをスレッドプールで実行して、
+逐次的なダウンロードを並列的な処理に変える。
+これにより、すべての画像をダウンロードするための時間が短縮する。そして結果をCompletionServiceから取り込み、
+それぞれの画像が可利用になるとすぐに表示するので動的で応答性の良いユーザインタフェイスを提供できる。
+
+// TODO コード写経
+
+#### タスクに制限時間を設ける
+
+ときには、活動が一定の時間内に完了しなかったらその結果は要らないし、活動を放棄したいこともある。
+
+- ex.1) 外部の広告サーバから広告を取り込むWebサーバ
+  - 広告を2秒以内に取り込めないとデフォルトの広告を表示するので、広告の取り込みを中断しても支障はない。
+- ex.2) 複数のデータソースからデータを並列的に取り込むポータルサイトは
+  - 一定時間だけデータを待ち、それが過ぎたらそのデータのないページを表示する。
+
+Future.get
+
+- 結果が得られたらただちにリターン
+- タイムアウトまでに結果が得られなければTimeoutExceptionを投げる
+
+待ち時間が長すぎたらタスクを停止して計算資源の浪費を防ぐ。
