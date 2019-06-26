@@ -5,13 +5,21 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / organization := "com.example"
 ThisBuild / organizationName := "example"
 
+lazy val commonSettings = Seq(
+  libraryDependencies += scalaTest % Test
+)
+
 lazy val javaConcurrentProgramming = (project in file("javaconcurrentprogramming"))
 lazy val zio = project
   .settings(
-    libraryDependencies ++= Seq(
-      scalaTest % Test,
-      "org.scalaz" %% "scalaz-zio" % "1.0-RC4"
-    ))
+    commonSettings,
+    libraryDependencies += "org.scalaz" %% "scalaz-zio" % "1.0-RC4"
+    )
+val catsEffect = (project in file("catseffect"))
+  .settings(
+    commonSettings,
+    libraryDependencies += "org.typelevel" %% "cats-effect" % "1.3.1"
+  )
 
 //lazy val root = (project in file("."))
 //  .settings(
