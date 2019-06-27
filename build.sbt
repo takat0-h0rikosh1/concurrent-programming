@@ -18,7 +18,14 @@ lazy val zio = project
 val catsEffect = (project in file("catseffect"))
   .settings(
     commonSettings,
-    libraryDependencies += "org.typelevel" %% "cats-effect" % "1.3.1"
+    libraryDependencies += "org.typelevel" %% "cats-effect" % "1.3.1",
+    scalacOptions ++= Seq(
+      "-feature",
+      "-deprecation",
+      "-unchecked",
+      "-language:postfixOps",
+      "-language:higherKinds",
+      "-Ypartial-unification")
   )
 
 //lazy val root = (project in file("."))
